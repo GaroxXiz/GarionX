@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GarionX</title>
+    <link rel="icon" type="image/png" href="./img/GarionX_logo.png" />
+    <link rel="stylesheet" href="./style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div id="overlay"></div>
+    <div class="container">
+
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo">
+            <img src="./img/GarionX_logo.png" alt="GarionX">
+          </div>
+
+          <button id="toggleSidebar">
+            <i data-lucide="panel-left"></i>
+          </button>
+        </div>
+        <div class="sidebar-top">
+          <button onclick="createChat()">New Chat</button>
+          <div id="chat-list"></div>
+        </div>
+
+        <!-- 🔥 FOOTER -->
+        <div class="sidebar-footer" id="user-section">
+          <button onclick="loginGoogle()">Login With Google</button>
+        </div>
+      </div>
+
+      <!-- MAIN -->
+      <div class="main">
+
+      <!-- HEADER -->
+      <div class="chat-header">
+        <button id="toggleSidebarMobile" class="menu-btn">
+            <i data-lucide="panel-left"></i>
+          </button>
+        <h2>GarionX</h2>
+      </div>
+
+      <!-- CHAT -->
+      <div id="chat" class="chat"></div>
+
+      <!-- INPUT -->
+      <div class="input-area">
+        <input id="input" placeholder="Type your message..." />
+
+        <button class="send-btn" onclick="send()">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+
+        <select id="personality" class="personality mobile-top">
+          <option value="" disabled selected>Personality</option>
+          <option value="default">Default</option>
+          <option value="strict">Strict</option>
+          <option value="friendly">Friendly</option>
+          <option value="clingy">Clingy</option>
+        </select>
+      </div>
+
+    </div>
+    </div>
+    <script src="./script.js"></script>
+  </body>
+</html>
