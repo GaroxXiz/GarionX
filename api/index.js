@@ -5,7 +5,6 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import jwt from "jsonwebtoken";
 import serverless from "serverless-http";
-import fetch from "node-fetch";
 import path from "path";
 import { pool } from "../db.js";
 

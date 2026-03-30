@@ -45,7 +45,7 @@ function closeSidebarMobile() {
 
 // GOOGLE LOGIN
 function loginGoogle() {
-  window.location.href = "/auth/google";
+  window.location.href = "/api/auth/google";
 }
 
 // LOGOUT
