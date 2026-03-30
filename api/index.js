@@ -5,7 +5,7 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import jwt from "jsonwebtoken";
 import serverless from "serverless-http";
-// import fetch from "node-fetch";
+import fetch from "node-fetch";
 import path from "path";
 import { pool } from "../db.js";
 
@@ -33,7 +33,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(express.static(path.join(process.cwd(), "public")));
+// app.use(express.static(path.join(process.env.LAMBDA_TASK_ROOT || process.cwd(), "public")));
 
 app.use(passport.initialize());
 
@@ -43,7 +43,7 @@ app.use(passport.initialize());
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: `${BASE_URL}/auth/google/callback`
+  callbackURL: `${BASE_URL}/api/auth/google/callback`
 },
 async (accessToken, refreshToken, profile, done) => {
   try {
@@ -59,6 +59,9 @@ async (accessToken, refreshToken, profile, done) => {
     const googleData = await googleRes.json();
 
     const email = googleData.email;
+    if (!email) {
+      return done(new Error("Google email not found"), null);
+    }
     const name = googleData.name;
     const picture = googleData.picture;
 
@@ -98,7 +101,10 @@ async (accessToken, refreshToken, profile, done) => {
 // OPTIONAL AUTH (JWT)
 // ======================
 function optionalAuth(req, res, next) {
-  const token = req.headers.authorization;
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith("Bearer ")
+    ? authHeader.split(" ")[1]
+    : null;
 
   if (!token) {
     req.user = { id: null, guest: true };
@@ -120,12 +126,12 @@ function optionalAuth(req, res, next) {
 // ======================
 
 // HOME
-app.get("/", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
-});
+// app.get("/", (req, res) => {
+//   res.sendFile(path.join(process.cwd(), "public", "index.html"));
+// });
 
 // GOOGLE LOGIN
-app.get("/auth/google",
+app.get("/api/auth/google",
   passport.authenticate("google", {
     scope: ["profile", "email"],
     prompt: "select_account"
@@ -133,8 +139,8 @@ app.get("/auth/google",
 );
 
 // CALLBACK
-app.get("/auth/google/callback",
-  passport.authenticate("google", { session: false }),
+app.get("/api/auth/google/callback",
+  passport.authenticate("google", { session: false, failureRedirect: "/" }),
   (req, res) => {
     const token = jwt.sign(
       { id: req.user.id },
@@ -147,7 +153,7 @@ app.get("/auth/google/callback",
 );
 
 // GET PROFILE
-app.get("/auth/me", optionalAuth, async (req, res) => {
+app.get("/api/auth/me", optionalAuth, async (req, res) => {
   try {
     if (req.user.guest) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -170,31 +176,37 @@ app.get("/auth/me", optionalAuth, async (req, res) => {
 // ======================
 
 // CREATE CHAT
-app.post("/chat-room", optionalAuth, async (req, res) => {
+app.post("/api/chat-room", optionalAuth, async (req, res) => {
   const userId = req.user.guest ? null : req.user.id;
+  try {
+    const result = await pool.query(
+      "INSERT INTO chats (user_id, title) VALUES ($1, $2) RETURNING *",
+      [userId, "New Chat"]
+    );
 
-  const result = await pool.query(
-    "INSERT INTO chats (user_id, title) VALUES ($1, $2) RETURNING *",
-    [userId, "New Chat"]
-  );
-
-  res.json(result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // LOAD CHAT
-app.get("/chat-room", optionalAuth, async (req, res) => {
+app.get("/api/chat-room", optionalAuth, async (req, res) => {
   if (req.user.guest) return res.json([]);
+  try {
+    const result = await pool.query(
+      "SELECT * FROM chats WHERE user_id=$1 ORDER BY id DESC",
+      [req.user.id]
+    );
 
-  const result = await pool.query(
-    "SELECT * FROM chats WHERE user_id=$1 ORDER BY id DESC",
-    [req.user.id]
-  );
-
-  res.json(result.rows);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // DELETE
-app.delete("/chat-room/:id", optionalAuth, async (req, res) => {
+app.delete("/api/chat-room/:id", optionalAuth, async (req, res) => {
   if (req.user.guest) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -206,17 +218,24 @@ app.delete("/chat-room/:id", optionalAuth, async (req, res) => {
     [id, req.user.id]
   );
 
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Chat not found" });
+  }
+
   res.json({ success: true });
 });
 
 // MESSAGE
-app.get("/message/:id", async (req, res) => {
-  const result = await pool.query(
-    "SELECT role, content FROM messages WHERE chat_id=$1 ORDER BY id",
-    [req.params.id]
-  );
-
-  res.json(result.rows);
+app.get("/api/message/:id", async (req, res) => {
+  try {
+      const result = await pool.query(
+      "SELECT role, content FROM messages WHERE chat_id=$1 ORDER BY id",
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ======================
@@ -233,7 +252,8 @@ function getPersonalityPrompt(type) {
 
 async function callGemini(messages, personality) {
   const text = messages[messages.length - 1].content;
-
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 8000);
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -244,34 +264,50 @@ async function callGemini(messages, personality) {
           role: "user",
           parts: [{ text: `${getPersonalityPrompt(personality)}\nUser: ${text}` }]
         }]
-      })
+      }),
+      signal: controller.signal
     }
   );
 
+    if (!res.ok) {
+    throw new Error("Gemini API failed");
+  }
+
   const data = await res.json();
+  if (!data?.candidates?.length) {
+  throw new Error("Invalid Gemini response");
+}
 
   return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
 }
 
 // CHAT
-app.post("/chat", optionalAuth, async (req, res) => {
+app.post("/api/chat", optionalAuth, async (req, res) => {
   const { messages, chatId, personality } = req.body;
+
+  if (!messages || !messages.length || !chatId) {
+    return res.status(400).json({ error: "Invalid messages" });
+  }
+
   const userId = req.user.guest ? null : req.user.id;
+  try {
+    const reply = await callGemini(messages, personality);
+    const last = messages[messages.length - 1];
 
-  const reply = await callGemini(messages, personality);
-  const last = messages[messages.length - 1];
+    await pool.query(
+      "INSERT INTO messages (user_id, chat_id, role, content, model) VALUES ($1,$2,$3,$4,$5)",
+      [userId, chatId, "user", last.content, "gemini"]
+    );
 
-  await pool.query(
-    "INSERT INTO messages (user_id, chat_id, role, content, model) VALUES ($1,$2,$3,$4,$5)",
-    [userId, chatId, "user", last.content, "gemini"]
-  );
+    await pool.query(
+      "INSERT INTO messages (user_id, chat_id, role, content, model) VALUES ($1,$2,$3,$4,$5)",
+      [userId, chatId, "assistant", reply, "gemini"]
+    );
 
-  await pool.query(
-    "INSERT INTO messages (user_id, chat_id, role, content, model) VALUES ($1,$2,$3,$4,$5)",
-    [userId, chatId, "assistant", reply, "gemini"]
-  );
-
-  res.json({ reply });
+    res.json({ reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ======================
