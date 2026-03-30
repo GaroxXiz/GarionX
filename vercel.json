@@ -1,6 +1,16 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node"
+    }
+  ],
   "routes": [
-    { "src": "/(.*)", "dest": "/api/index.js" }
+    { "src": "/auth/(.*)", "dest": "/api/index.js" },
+    { "src": "/chat(.*)", "dest": "/api/index.js" },
+    { "src": "/message/(.*)", "dest": "/api/index.js" },
+    { "src": "/public/(.*)", "dest": "/public/$1" },
+    { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
