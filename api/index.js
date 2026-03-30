@@ -46,52 +46,18 @@ passport.use(new GoogleStrategy({
 },
 async (accessToken, refreshToken, profile, done) => {
   try {
-    const googleRes = await fetch(
-      "https://www.googleapis.com/oauth2/v2/userinfo",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      }
-    );
+    const email = profile.emails?.[0]?.value;
+    const name = profile.displayName;
+    const picture = profile.photos?.[0]?.value;
 
-    const googleData = await googleRes.json();
-
-    const email = googleData.email;
     if (!email) {
       return done(new Error("Google email not found"), null);
     }
-    const name = googleData.name;
-    const picture = googleData.picture;
 
-    let user = await pool.query(
-      "SELECT * FROM users WHERE username=$1",
-      [email]
-    );
-
-    if (user.rows.length === 0) {
-      user = await pool.query(
-        `INSERT INTO users (username, password, name, picture)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [email, "google", name, picture]
-      );
-    } else {
-      await pool.query(
-        `UPDATE users SET name=$1, picture=$2 WHERE username=$3`,
-        [name, picture, email]
-      );
-
-      user = await pool.query(
-        "SELECT * FROM users WHERE username=$1",
-        [email]
-      );
-    }
-
-    done(null, user.rows[0]);
+    // ❌ JANGAN QUERY DB DI SINI
+    done(null, { email, name, picture });
 
   } catch (err) {
-    console.error("GOOGLE AUTH ERROR:", err);
     done(err, null);
   }
 }));
@@ -140,14 +106,46 @@ app.get("/api/auth/google",
 // CALLBACK
 app.get("/api/auth/google/callback",
   passport.authenticate("google", { session: false, failureRedirect: "/" }),
-  (req, res) => {
-    const token = jwt.sign(
-      { id: req.user.id },
-      SECRET,
-      { expiresIn: "7d" }
-    );
+  async (req, res) => {
+    try {
+      const { email, name, picture } = req.user;
 
-    res.redirect(`${FRONTEND_URL}/?token=${token}`);
+      let user = await pool.query(
+        "SELECT * FROM users WHERE username=$1",
+        [email]
+      );
+
+      if (user.rows.length === 0) {
+        user = await pool.query(
+          `INSERT INTO users (username, password, name, picture)
+           VALUES ($1, $2, $3, $4)
+           RETURNING *`,
+          [email, "google", name, picture]
+        );
+      } else {
+        await pool.query(
+          `UPDATE users SET name=$1, picture=$2 WHERE username=$3`,
+          [name, picture, email]
+        );
+
+        user = await pool.query(
+          "SELECT * FROM users WHERE username=$1",
+          [email]
+        );
+      }
+
+      const token = jwt.sign(
+        { id: user.rows[0].id },
+        SECRET,
+        { expiresIn: "7d" }
+      );
+
+      res.redirect(`${FRONTEND_URL}/?token=${token}`);
+
+    } catch (err) {
+      console.error("CALLBACK ERROR:", err);
+      res.status(500).send("Auth error");
+    }
   }
 );
 
@@ -212,7 +210,7 @@ app.delete("/api/chat-room/:id", optionalAuth, async (req, res) => {
 
   const { id } = req.params;
 
-  await pool.query(
+  const result = await pool.query(
     "DELETE FROM chats WHERE id=$1 AND user_id=$2",
     [id, req.user.id]
   );
@@ -252,7 +250,7 @@ function getPersonalityPrompt(type) {
 async function callGemini(messages, personality) {
   const text = messages[messages.length - 1].content;
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), 8000);
+  setTimeout(() => controller.abort(), 5000);
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
