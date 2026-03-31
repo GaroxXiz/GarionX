@@ -19,15 +19,17 @@ GarionX adalah aplikasi chatbot berbasis web yang menggunakan teknologi modern s
 ## 📁 Project Structure
 project-root/
 │
+├── api/
+│ └── index.js
+│
 ├── public/
+│ ├── index.html
 │ ├── style.css
 │ ├── script.js
 │ └── img/
 │   └── GarionX_logo.png
 │
 ├── db.js
-├── index.html
-├── server.js
 ├── package.json
 └── .env
 
