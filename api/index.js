@@ -96,59 +96,85 @@ function optionalAuth(req, res, next) {
 // });
 
 // GOOGLE LOGIN
-app.get("/api/auth/google", (req, res, next) => {
-  console.log("GOOGLE LOGIN HIT");
-  next();
-}, passport.authenticate("google", {
-  scope: ["profile", "email"],
-  prompt: "select_account"
-}));
+app.get("/api/auth/google", (req, res) => {
+  const redirectUrl =
+    "https://accounts.google.com/o/oauth2/v2/auth?" +
+    new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      redirect_uri: `${process.env.BASE_URL}/api/auth/google/callback`,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      prompt: "consent"
+    });
+
+  res.redirect(redirectUrl);
+});
 
 // CALLBACK
-app.get("/api/auth/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: "/" }),
-  async (req, res) => {
-    try {
-      const { email, name, picture } = req.user;
+app.get("/api/auth/google/callback", async (req, res) => {
+  try {
+    const code = req.query.code;
 
-      let user = await pool.query(
-        "SELECT * FROM users WHERE username=$1",
-        [email]
-      );
+    // tukar code → access token
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${process.env.BASE_URL}/api/auth/google/callback`,
+        grant_type: "authorization_code",
+        code
+      })
+    });
 
-      if (user.rows.length === 0) {
-        user = await pool.query(
-          `INSERT INTO users (username, password, name, picture)
-           VALUES ($1, $2, $3, $4)
-           RETURNING *`,
-          [email, "google", name, picture]
-        );
-      } else {
-        await pool.query(
-          `UPDATE users SET name=$1, picture=$2 WHERE username=$3`,
-          [name, picture, email]
-        );
+    const tokenData = await tokenRes.json();
 
-        user = await pool.query(
-          "SELECT * FROM users WHERE username=$1",
-          [email]
-        );
+    // ambil user info
+    const userRes = await fetch(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`
+        }
       }
+    );
 
-      const token = jwt.sign(
-        { id: user.rows[0].id },
-        SECRET,
-        { expiresIn: "7d" }
+    const user = await userRes.json();
+
+    const email = user.email;
+    const name = user.name;
+    const picture = user.picture;
+
+    // simpan ke DB (sama seperti sebelumnya)
+    let dbUser = await pool.query(
+      "SELECT * FROM users WHERE username=$1",
+      [email]
+    );
+
+    if (dbUser.rows.length === 0) {
+      dbUser = await pool.query(
+        `INSERT INTO users (username, password, name, picture)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [email, "google", name, picture]
       );
-
-      res.redirect(`${FRONTEND_URL}/?token=${token}`);
-
-    } catch (err) {
-      console.error("CALLBACK ERROR:", err);
-      res.status(500).send("Auth error");
     }
+
+    const token = jwt.sign(
+      { id: dbUser.rows[0].id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.redirect(`${process.env.FRONTEND_URL}/?token=${token}`);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Auth error");
   }
-);
+});
 
 // GET PROFILE
 app.get("/api/auth/me", optionalAuth, async (req, res) => {
