@@ -96,12 +96,13 @@ function optionalAuth(req, res, next) {
 // });
 
 // GOOGLE LOGIN
-app.get("/api/auth/google",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    prompt: "select_account"
-  })
-);
+app.get("/api/auth/google", (req, res, next) => {
+  console.log("GOOGLE LOGIN HIT");
+  next();
+}, passport.authenticate("google", {
+  scope: ["profile", "email"],
+  prompt: "select_account"
+}));
 
 // CALLBACK
 app.get("/api/auth/google/callback",

@@ -76,9 +76,9 @@ async function getUserProfile() {
   if (!token) return null;
 
   try {
-    const res = await fetch("/auth/me", {
+    const res = await fetch("/api/auth/me", {
       headers: {
-        Authorization: token
+        Authorization: `Bearer ${token}`
       }
     });
 
@@ -145,9 +145,9 @@ async function createChat() {
   isCreatingChat = true;
 
   try {
-    const res = await fetch("/chat-room", {
+    const res = await fetch("/api/chat-room", {
       method: "POST",
-      headers: token ? { Authorization: token } : {}
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
 
     if (!res.ok) throw new Error("Create chat failed");
@@ -169,8 +169,8 @@ async function createChat() {
 // LOAD CHAT LIST
 async function loadChats() {
   try {
-    const res = await fetch("/chat-room", {
-      headers: token ? { Authorization: token } : {}
+    const res = await fetch("/api/chat-room", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
 
     const chats = await res.json();
@@ -215,8 +215,8 @@ async function loadChat(id) {
   try {
     currentChatId = id;
 
-    const res = await fetch(`/message/${id}`, {
-      headers: token ? { Authorization: token } : {}
+    const res = await fetch(`/api/message/${id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
 
     const data = await res.json();
@@ -238,9 +238,9 @@ async function deleteChat(id) {
   if (!confirm("Delete this chat?")) return;
 
   try {
-    const res = await fetch(`/chat-room/${id}`, {
+    const res = await fetch(`/api/chat-room/${id}`, {
       method: "DELETE",
-      headers: token ? { Authorization: token } : {}
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
     });
 
     if (!res.ok) throw new Error("Delete failed");
@@ -288,11 +288,11 @@ async function send() {
 
     const typing = addTyping();
 
-    const res = await fetch("/chat", {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: token } : {})
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       body: JSON.stringify({
         messages: [{ role: "user", content: text }],
